@@ -6,6 +6,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, Dropout, MaxPooling2D
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
+from keras.utils import plot_model
 
 import os
 import numpy as np
@@ -190,3 +191,156 @@ plt.plot(epochs_range, val_loss, label='Pérdida de Validación')
 plt.legend(loc='upper right')
 plt.title('Pérdida de Entrenamiento y Validación')
 plt.show()
+
+#%%
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# En las gráficas anteriores se observa que la precisión del entrenamiento crece
+# de forma lineal con el tiempo, mientras que la precisión de validación se estanca
+# en alrededor del 70% en el proceso de entrenamiento. Además la diferencia en precisión
+# entre el entrenamiento y la validación es evidente -un signo del overfitting
+# Eliminar el overfitting por medio del aumento de los datos de entrenamiento
+# lo que se hace es, en primer lugar, evitar que la red sea entrenada
+# o que vea la misma imagen dos veces durante el entrenamiento
+# por lo que se tiene que hacer ligeras modificaciones a las imágenes que
+# se tienen de entrenamiento
+
+# Aplicar una rotación horizontal
+image_gen = ImageDataGenerator(rescale=1./255, horizontal_flip=True)
+train_data_gen = image_gen.flow_from_directory(batch_size=batch_size,
+                                               directory=train_dir,
+                                               shuffle=True,
+                                               target_size=(IMG_HEIGHT, IMG_WIDTH))
+
+# Tomar una muestra de los ejemplos de entrenamiento y repetirla 5 veces
+# para que se observe el resultado sobre la misma imagen
+augmented_images = [train_data_gen[0][0][0] for i in range(5)]
+
+# Visualizar las nuevas imágenes
+plotImages(augmented_images)
+
+#%%
+# Rotar la imagen de manera aleatoria
+image_gen = ImageDataGenerator(rescale=1./255, rotation_range=45)
+
+train_data_gen = image_gen.flow_from_directory(batch_size=batch_size,
+                                               directory=train_dir,
+                                               shuffle=True,
+                                               target_size=(IMG_HEIGHT, IMG_WIDTH))
+
+augmented_images = [train_data_gen[0][0][0] for i in range(5)]
+
+plotImages(augmented_images)
+
+#%%
+# Ahora hacer zoom
+image_gen = ImageDataGenerator(rescale=1./255, zoom_range=0.5)
+
+train_data_gen = image_gen.flow_from_directory(batch_size=batch_size,
+                                               directory=train_dir,
+                                               shuffle=True,
+                                               target_size=(IMG_HEIGHT, IMG_WIDTH))
+
+augmented_images = [train_data_gen[0][0][0] for i in range(5)]
+
+plotImages(augmented_images)
+
+#%%
+# Juntar todos estos grupos de datos
+image_gen_train = ImageDataGenerator(
+                    rescale=1./255,
+                    rotation_range=45,
+                    width_shift_range=.15,
+                    height_shift_range=.15,
+                    horizontal_flip=True,
+                    zoom_range=0.5
+                    )
+
+train_data_gen = image_gen_train.flow_from_directory(batch_size=batch_size,
+                                                     directory=train_dir,
+                                                     shuffle=True,
+                                                     target_size=(IMG_HEIGHT, IMG_WIDTH),
+                                                     class_mode='binary')
+
+# Visualizar una sola imagen con todas las transformaciones
+augmented_images = [train_data_gen[0][0][0] for i in range(5)]
+plotImages(augmented_images)
+
+# Ahora para la validación
+image_gen_val = ImageDataGenerator(rescale=1./255)
+
+val_data_gen = image_gen_val.flow_from_directory(batch_size=batch_size,
+                                                 directory=validation_dir,
+                                                 target_size=(IMG_HEIGHT, IMG_WIDTH),
+                                                 class_mode='binary')
+#%%
+# Otra técnica para reducir el overfitting es la introducción de dropouts a la red
+# Es una forma de regularización que fuerza a los pesos neuronales a tomar
+# solo valores pequeños, lo que hace la distribución de los pesos más regulares
+# y la red puede reducir el overfitting en entrenamientos con muestras pequeñas
+
+# Crear una nueva red con Dropouts
+# esto hace, de manera aleatoria, que el 20% de las neuronas se vayan a 0
+model_new = Sequential([
+    Conv2D(16, 3, padding='same', activation='relu', 
+           input_shape=(IMG_HEIGHT, IMG_WIDTH ,3)),
+    MaxPooling2D(),
+    Dropout(0.2),
+    Conv2D(32, 3, padding='same', activation='relu'),
+    MaxPooling2D(),
+    Conv2D(64, 3, padding='same', activation='relu'),
+    MaxPooling2D(),
+    Dropout(0.2),
+    Flatten(),
+    Dense(512, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+# Compilar el nuevo modelo
+model_new.compile(optimizer='adam',
+              loss='binary_crossentropy',
+              metrics=['accuracy'])
+
+# Ver el resumen del modelo
+model_new.summary()
+
+# Entrenar el modelo
+history = model_new.fit_generator(
+    train_data_gen,
+    steps_per_epoch=total_train // batch_size,
+    epochs=epochs,
+    validation_data=val_data_gen,
+    validation_steps=total_val // batch_size
+)
+
+# Visualizar el nuevo modelo
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+epochs_range = range(epochs)
+
+plt.figure(figsize=(8, 8))
+plt.subplot(1, 2, 1)
+plt.plot(epochs_range, acc, label='Training Accuracy')
+plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(1, 2, 2)
+plt.plot(epochs_range, loss, label='Training Loss')
+plt.plot(epochs_range, val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+plt.show()
+
+
+'''
+predictions = model.predict(test_images)
+# Se puede observar la primera predicción
+predictions[0]
+# Se observa cual es el que tiene el valor máximo, que representaría el que tiene la mayor
+# probabilidad de que sea la etiqueta
+np.argmax(predictions[0])
+'''
